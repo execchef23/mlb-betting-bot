@@ -1,0 +1,17 @@
+# Virtual environments
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Data, logs, models
+data/
+*.log
+*.zip
+*.json
+
+# OS files
+.DS_Store
+

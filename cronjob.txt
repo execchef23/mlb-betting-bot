@@ -1,0 +1,2 @@
+# Run run_bot.py every day at 7am
+* * * * * cd /app && /usr/local/bin/python run_bot.py >> /app/data/cron.log 2>&1

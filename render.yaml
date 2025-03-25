@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: mlb-betting-dashboard
+    env: docker
+    plan: free
+    autoDeploy: true
+    region: oregon

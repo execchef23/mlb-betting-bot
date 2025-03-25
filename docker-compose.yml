@@ -1,0 +1,10 @@
+version: '3.9'
+
+services:
+  mlb_bot:
+    build: .
+    container_name: mlb_betting_ai
+    volumes:
+      - .:/app
+    ports:
+      - "8501:8501"
