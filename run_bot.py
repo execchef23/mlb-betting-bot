@@ -1,89 +1,93 @@
 import pandas as pd
 import xgboost as xgb
-from stable_baselines3 import PPO
-from datetime import datetime
+import datetime
 import os
+from stable_baselines3 import PPO
+from betting_env import BettingEnv
+from utils.send_telegram import send_telegram_message
 
-# === Load data ===
-features_path = "data/live_game_features.csv"
-odds_path = "data/live_odds.csv"
+# Config
+DAYS_AHEAD = 2  # how many future days to include
+VALUE_THRESHOLD = 0.05  # minimum edge required to place bet
+BANKROLL = 1000  # example bankroll
 
-features = pd.read_csv(features_path)
-odds = pd.read_csv(odds_path)
+# Load features
+data_path = "data/live_game_features.csv"
+if not os.path.exists(data_path):
+    print("⚠️ live_game_features.csv not found. Run enhance_features.py first.")
+    exit()
 
-print(f"📦 Loaded {len(features)} games from live_game_features.csv")
+df = pd.read_csv(data_path)
+df["game_date"] = pd.to_datetime(df["game_date"])
+today = datetime.date.today()
+df = df[df["game_date"].dt.date <= today + datetime.timedelta(days=DAYS_AHEAD)]
 
-# === Load XGBoost model and make predictions ===
+if df.empty:
+    print("📭 No games to predict.")
+    exit()
+
+print(f"📦 Loaded {len(df)} games from live_game_features.csv")
+
+# Load XGBoost model
 model = xgb.XGBClassifier()
-model.load_model("data/xgb_model_smart.json")
+model.load_model("models/xgb_model_smart.json")
 
-# Encode team names
-team_map = {team: code for code, team in enumerate(
-    pd.concat([features["home_team"], features["away_team"]]).unique()
-)}
-features["home_team_code"] = features["home_team"].map(team_map)
-features["away_team_code"] = features["away_team"].map(team_map)
-features["run_diff"] = features["home_avg_run_diff"] - features["away_avg_run_diff"]
+# Prepare input
+model_input = df[[
+    "home_team_code", "away_team_code", "home_win_pct", "away_win_pct",
+    "home_momentum", "away_momentum", "home_avg_run_diff", "away_avg_run_diff", "run_diff"
+]]
+pred_probs = model.predict_proba(model_input)[:, 1]  # Home win prob
 
-X_input = features[["home_team_code", "away_team_code", "home_avg_run_diff", "run_diff"]]
-features["model_home_win_prob"] = model.predict_proba(X_input)[:, 1]
-features["edge"] = features["model_home_win_prob"] - 0.5
+# Load RL agent
+try:
+    env = BettingEnv(df, pred_probs, bankroll=BANKROLL)
+    rl_model = PPO.load("data/rl_betting_agent.zip")
+    action = rl_model.predict(env.reset())[0]
+except Exception as e:
+    print("⚠️ RL model failed to load. Using default policy.")
+    env = BettingEnv(df, pred_probs, bankroll=BANKROLL)
+    action = [1] * len(df)  # naive: bet on all with value
 
-print("✅ Model predictions generated")
+# Place bets
+placed_bets = []
+for i, row in df.iterrows():
+    predicted_prob = pred_probs[i]
+    implied_prob = 100 / abs(row["home_odds"]) if row["home_odds"] > 0 else abs(row["home_odds"]) / (abs(row["home_odds"]) + 100)
+    edge = predicted_prob - implied_prob
 
-# === Load trained RL agent ===
-rl_model = PPO.load("data/rl_betting_agent.zip")
+    if edge > VALUE_THRESHOLD:
+        bet = {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "game_date": row["game_date"],
+            "home_team": row["home_team"],
+            "away_team": row["away_team"],
+            "predicted_home_win_prob": round(predicted_prob, 4),
+            "home_odds": row["home_odds"],
+            "edge": round(edge, 4)
+        }
+        placed_bets.append(bet)
 
-# === Simulate betting ===
-bankroll = 1000.0
-bet_log = []
-bet_sizes = [0, 10, 25, 50]
+        # ✅ Send Telegram alert
+        message = (
+            f"📈 <b>Value Bet Found</b>\n"
+            f"🏠 {row['home_team']} vs 🆚 {row['away_team']}\n"
+            f"📅 Game Date: {row['game_date']}\n"
+            f"💰 Odds: {row['home_odds']}\n"
+            f"📊 Edge: {edge:.2%}"
+        )
+        send_telegram_message(message)
 
-for i, row in features.iterrows():
-    obs = [row["model_home_win_prob"], row["edge"]]
-    import random
-    action = random.choice([1,2,3]) # Always bet (never action 0)
-    bet = bet_sizes[action]
-
-    print(f"🧠 RL agent chose action: {action} -> Bet: ${bet}")
-
-    if bet > 0:
-        win = row["model_home_win_prob"] > 0.5  # Simplified outcome
-        result = "WIN" if win else "LOSS"
-        odds_decimal = 1.9  # Simplified payout
-
-        if win:
-            profit = bet * (odds_decimal - 1)
-            bankroll += profit
-        else:
-            profit = -bet
-            bankroll -= bet
-
-        bet_log.append({
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "matchup": f"{row['away_team']} @ {row['home_team']}",
-            "model_prob": round(row["model_home_win_prob"], 2),
-            "edge": round(row["edge"], 2),
-            "bet_amount": bet,
-            "result": result,
-            "bankroll": round(bankroll, 2)
-        })
-
-# === Save results ===
-log_df = pd.DataFrame(bet_log)
+# Save results
 os.makedirs("data", exist_ok=True)
+results_path = "data/bet_results.csv"
 
-log_file = "data/bet_results.csv"
-if os.path.exists(log_file):
-    log_df.to_csv(log_file, mode='a', header=False, index=False)
+if placed_bets:
+    df_bets = pd.DataFrame(placed_bets)
+    if os.path.exists(results_path):
+        df_bets.to_csv(results_path, mode="a", header=False, index=False)
+    else:
+        df_bets.to_csv(results_path, index=False)
+    print(f"✅ {len(df_bets)} value bets placed and saved to bet_results.csv")
 else:
-    log_df.to_csv(log_file, index=False)
-
-# === Print summary ===
-print("✅ Finished bet loop. Printing results...\n")
-print("🎯 Value Bets Today:")
-for row in bet_log:
-    print(f"{row['matchup']} | Bet: ${row['bet_amount']} | Result: {row['result']} | Bankroll: ${row['bankroll']}")
-
-if not bet_log:
-    print("🤷 No value bets found today or RL agent chose to skip all games.")
+    print("📉 No value bets found today.")
