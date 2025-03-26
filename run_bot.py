@@ -7,11 +7,11 @@ from betting_env import BettingEnv
 from utils.send_telegram import send_telegram_message
 
 # Config
-DAYS_AHEAD = 2  # how many future days to include
-VALUE_THRESHOLD = 0.05  # minimum edge required to place bet
-BANKROLL = 1000  # example bankroll
+DAYS_AHEAD = 1  # Predict for today + 1 day ahead
+VALUE_THRESHOLD = 0.05  # Minimum model edge to place bet
+BANKROLL = 1000  # Starting bankroll
 
-# Load features
+# Load input features
 data_path = "data/live_game_features.csv"
 if not os.path.exists(data_path):
     print("⚠️ live_game_features.csv not found. Run enhance_features.py first.")
@@ -32,24 +32,36 @@ print(f"📦 Loaded {len(df)} games from live_game_features.csv")
 model = xgb.XGBClassifier()
 model.load_model("models/xgb_model_smart.json")
 
-# Prepare input
+# Predict home win probability
 model_input = df[[
     "home_team_code", "away_team_code", "home_win_pct", "away_win_pct",
     "home_momentum", "away_momentum", "home_avg_run_diff", "away_avg_run_diff", "run_diff"
 ]]
 pred_probs = model.predict_proba(model_input)[:, 1]  # Home win prob
 
-# Load RL agent
+# 🔁 Save all predictions for trend tracking
+all_predictions = df.copy()
+all_predictions["predicted_home_win_prob"] = pred_probs
+all_predictions["timestamp"] = datetime.datetime.now().isoformat()
+
+history_path = "data/prediction_history.csv"
+os.makedirs("data", exist_ok=True)
+if os.path.exists(history_path):
+    all_predictions.to_csv(history_path, mode="a", header=False, index=False)
+else:
+    all_predictions.to_csv(history_path, index=False)
+
+# Load RL agent or fall back
 try:
     env = BettingEnv(df, pred_probs, bankroll=BANKROLL)
     rl_model = PPO.load("data/rl_betting_agent.zip")
     action = rl_model.predict(env.reset())[0]
-except Exception as e:
-    print(f"⚠️ RL model failed to load: {e}. Using default policy.")
+except Exception:
+    print("⚠️ RL model failed to load. Using default policy.")
     env = BettingEnv(df, pred_probs, bankroll=BANKROLL)
     action = [1] * len(df)
 
-# Place bets
+# Place value bets
 placed_bets = []
 for i, row in df.iterrows():
     predicted_prob = pred_probs[i]
@@ -68,7 +80,7 @@ for i, row in df.iterrows():
         }
         placed_bets.append(bet)
 
-        # ✅ Send Telegram alert
+        # Send Telegram alert
         message = (
             f"📈 <b>Value Bet Found</b>\n"
             f"🏠 {row['home_team']} vs 🆚 {row['away_team']}\n"
@@ -78,10 +90,8 @@ for i, row in df.iterrows():
         )
         send_telegram_message(message)
 
-# Save results
-os.makedirs("data", exist_ok=True)
+# Save placed bets
 results_path = "data/bet_results.csv"
-
 if placed_bets:
     df_bets = pd.DataFrame(placed_bets)
     if os.path.exists(results_path):
