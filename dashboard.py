@@ -5,11 +5,12 @@ import os
 st.set_page_config(page_title="MLB Betting AI Dashboard", layout="wide")
 st.title("⚾ MLB Betting AI Dashboard")
 
-# Paths
+# --- File paths ---
 bet_path = "data/bet_results.csv"
 history_path = "data/prediction_history.csv"
+odds_path = "data/raw_odds.csv"
 
-# 🔔 Value Bet Alerts
+# 🔔 Recent Value Bets
 st.markdown("## 🔔 Recent Value Bets (Last 24 Hours)")
 
 if os.path.exists(bet_path):
@@ -38,22 +39,98 @@ if os.path.exists(bet_path):
 else:
     st.warning("⚠️ No bet history found. Run run_bot.py to create bet_results.csv.")
 
-# 🔮 Prediction History Section
-st.markdown("## 🔮 Model Prediction History")
+# 🔮 Prediction History
+st.markdown("## 🔮 Prediction History")
 
 if os.path.exists(history_path):
     try:
-        history = pd.read_csv(history_path)
-        history["timestamp"] = pd.to_datetime(history["timestamp"])
-        history = history.sort_values("timestamp", ascending=False).head(50)
+        hist = pd.read_csv(history_path)
+        hist["timestamp"] = pd.to_datetime(hist["timestamp"])
+        hist["game_date"] = pd.to_datetime(hist["game_date"])
+        recent = hist.sort_values("timestamp", ascending=False).head(50)
 
-        st.dataframe(
-            history[[
-                "timestamp", "game_date", "home_team", "away_team", "predicted_home_win_prob"
-            ]].round(3),
-            use_container_width=True
-        )
+        st.dataframe(recent[[
+            "timestamp", "game_date", "home_team", "away_team", "predicted_home_win_prob"
+        ]].round(3), use_container_width=True)
     except Exception as e:
         st.error(f"Error loading prediction history: {e}")
 else:
     st.warning("⚠️ prediction_history.csv not found. Run run_bot.py to generate predictions.")
+
+# ✅ Win/Loss Summary
+st.markdown("## ✅ Win/Loss Summary")
+
+if os.path.exists(bet_path):
+    try:
+        df = pd.read_csv(bet_path)
+        if "actual_result" in df.columns:
+            summary = df["actual_result"].value_counts()
+            total = summary.sum()
+            wins = summary.get("WIN", 0)
+            losses = summary.get("LOSS", 0)
+            win_rate = wins / total if total > 0 else 0.0
+
+            st.metric("🏆 Wins", wins)
+            st.metric("❌ Losses", losses)
+            st.metric("📊 Win Rate", f"{win_rate:.2%}")
+        else:
+            st.info("📭 Waiting for game results... Run track_results.py.")
+    except Exception as e:
+        st.error(f"Error reading bet results: {e}")
+
+# 🏆 Team Leaderboard by Confidence
+st.markdown("## 🏆 Team Leaderboard (Top Predicted Wins)")
+
+if os.path.exists(history_path):
+    try:
+        top_preds = hist.sort_values("predicted_home_win_prob", ascending=False).head(10)
+        st.dataframe(top_preds[[
+            "game_date", "home_team", "away_team", "predicted_home_win_prob"
+        ]].round(3), use_container_width=True)
+    except Exception as e:
+        st.error(f"Error generating leaderboard: {e}")
+
+# 📊 Confidence Distribution Chart
+st.markdown("## 📊 Confidence Distribution (Model Predictions)")
+
+if os.path.exists(history_path):
+    try:
+        confidence_bins = hist["predicted_home_win_prob"].round(1).value_counts().sort_index()
+        st.bar_chart(confidence_bins)
+    except Exception as e:
+        st.error(f"Error generating chart: {e}")
+
+# 🧠 Upcoming Games with Model Predictions
+st.markdown("## 🧠 Upcoming Games + Model Predictions")
+
+if os.path.exists(odds_path) and os.path.exists(history_path):
+    try:
+        upcoming = pd.read_csv(odds_path)
+        upcoming["game_date"] = pd.to_datetime(upcoming["game_date"])
+
+        preds = pd.read_csv(history_path)
+        preds["game_date"] = pd.to_datetime(preds["game_date"])
+
+        merged = pd.merge(
+            upcoming,
+            preds[["game_date", "home_team", "away_team", "predicted_home_win_prob"]],
+            on=["game_date", "home_team", "away_team"],
+            how="left"
+        )
+
+        merged = merged.sort_values("game_date")
+        merged["predicted_home_win_prob"] = merged["predicted_home_win_prob"].round(3)
+        merged.rename(columns={
+            "home_odds": "🏠 Home Odds",
+            "away_odds": "🆚 Away Odds",
+            "predicted_home_win_prob": "🤖 Home Win Prob"
+        }, inplace=True)
+
+        st.dataframe(merged[[
+            "game_date", "home_team", "away_team", "🏠 Home Odds", "🆚 Away Odds", "🤖 Home Win Prob"
+        ]], use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Error combining odds and predictions: {e}")
+else:
+    st.info("📊 Run scrape_odds.py and run_bot.py to see predictions with odds.")
