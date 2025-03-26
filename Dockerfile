@@ -25,4 +25,4 @@ RUN chmod 0644 /etc/cron.d/mlb-cronjob && crontab /etc/cron.d/mlb-cronjob
 RUN touch /app/data/cron.log
 
 # Start cron + Streamlit
-CMD cron && streamlit run dashboard.py --server.port=8501 --server.enableCORS=false
+CMD ["sh", "-c", "cron && streamlit run dashboard.py --server.port=10000 --server.enableCORS=false"]
