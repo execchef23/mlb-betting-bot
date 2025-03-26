@@ -1,42 +1,61 @@
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
+import requests
 import pandas as pd
-import time
+import os
 
-def get_draftkings_odds():
-    options = webdriver.ChromeOptions()
-    options.add_argument("--headless")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--no-sandbox")
+API_KEY = "b666b3390e3028180cc3b53ab0fa1934"  # Replace with your real key
 
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-    driver.get("https://sportsbook.draftkings.com/leagues/baseball/mlb")
+def get_odds():
+    url = "https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/"
+    params = {
+        "apiKey": API_KEY,
+        "regions": "us",
+        "markets": "h2h",
+        "oddsFormat": "american"
+    }
 
-    time.sleep(5)
+    resp = requests.get(url, params=params)
+    if resp.status_code != 200:
+        print("⚠️ API error:", resp.status_code, resp.text)
+        return []
 
-    teams = driver.find_elements(By.CLASS_NAME, "event-cell__name-text")
-    odds = driver.find_elements(By.CLASS_NAME, "sportsbook-odds")
+    games = resp.json()
+    all_data = []
 
-    games = []
-
-    for i in range(0, len(teams) - 1, 2):
+    for game in games:
         try:
-            games.append({
-                "away_team": teams[i].text,
-                "home_team": teams[i+1].text,
-                "away_odds": odds[i].text,
-                "home_odds": odds[i+1].text,
+            home = game["home_team"]
+            away = game["away_team"]
+            game_date = game["commence_time"][:10]
+
+            bookmaker = game["bookmakers"][0]
+            outcomes = bookmaker["markets"][0]["outcomes"]
+
+            home_odds = next(o["price"] for o in outcomes if o["name"] == home)
+            away_odds = next(o["price"] for o in outcomes if o["name"] == away)
+
+            all_data.append({
+                "game_date": game_date,
+                "home_team": home,
+                "away_team": away,
+                "home_odds": home_odds,
+                "away_odds": away_odds
             })
-        except IndexError:
+        except:  # noqa: E722
             continue
 
-    driver.quit()
+    return all_data
 
+def main():
+    print("📡 Fetching real odds from OddsAPI...")
+    games = get_odds()
+    if not games:
+        print("❌ No games fetched.")
+        return
+
+    os.makedirs("data", exist_ok=True)
     df = pd.DataFrame(games)
-    df.to_csv("data/live_odds.csv", index=False)
-    print("✅ DraftKings odds saved to data/live_odds.csv")
+    df.to_csv("data/raw_odds.csv", index=False)
+    print(f"✅ Saved {len(df)} games to data/raw_odds.csv")
 
 if __name__ == "__main__":
-    get_draftkings_odds()
+    main()
