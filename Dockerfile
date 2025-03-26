@@ -22,7 +22,7 @@ COPY cronjob.txt /etc/cron.d/mlb-cronjob
 RUN chmod 0644 /etc/cron.d/mlb-cronjob && crontab /etc/cron.d/mlb-cronjob
 
 # Create log file
-RUN touch /app/data/cron.log
+RUN mkdir -p /app/data && touch /app/data/cron.log
 
 # Start cron + Streamlit
 CMD ["sh", "-c", "cron && streamlit run dashboard.py --server.port=10000 --server.enableCORS=false"]
