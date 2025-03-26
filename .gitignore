@@ -1,17 +1,45 @@
-# Virtual environments
+# Ignore virtual environments
 venv/
 .venv/
 
-# Python cache
+# Ignore data files
+data/*.csv
+data/*.log
+
+# Ignore Python cache files
 __pycache__/
 *.py[cod]
+*.pyo
 
-# Data, logs, models
-data/
-*.log
-*.zip
+# Ignore model artifacts
+*.joblib
+*.pkl
+*.h5
+*.onnx
 *.json
 
-# OS files
-.DS_Store
+# Ignore logs
+*.log
 
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore Streamlit temp files
+.streamlit/config.toml
+.streamlit/secrets.toml
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore Docker build artifacts
+*.tar
+docker-compose.override.yml
+
+# Ignore environment files
+.env
+.env.*
+*.env
+
+# VSCode settings (optional)
+.vscode/
