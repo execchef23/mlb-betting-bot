@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import os
-from datetime import datetime
 
 st.set_page_config(page_title="MLB Betting AI Dashboard", layout="wide")
 st.title("⚾️ MLB Betting AI Dashboard")
@@ -11,7 +10,31 @@ bet_path = "data/bet_results.csv"
 if os.path.exists(bet_path):
     try:
         bets = pd.read_csv(bet_path)
+        
+        st.markdown("### 🔔 Value Bet Alerts")
 
+        # Only show recent bets from the last 24 hours
+        recent_bets = bets.copy()
+        recent_bets["timestamp"] = pd.to_datetime(recent_bets["timestamp"])
+        last_24h = pd.Timestamp.now() - pd.Timedelta(hours=24)
+        recent_bets = recent_bets[recent_bets["timestamp"] > last_24h]
+
+        if recent_bets.empty:
+            st.info("📭 No value bets placed in the last 24 hours.")
+        else:
+            for _, row in recent_bets.iterrows():
+                st.markdown(
+                    f"""
+                    <div style="border:1px solid #ddd;padding:10px;margin:10px 0;border-radius:5px;">
+                        <b>{row['home_team']} vs {row['away_team']}</b><br>
+                        📅 <b>Game Date:</b> {row['game_date']}<br>
+                        💰 <b>Odds:</b> {row['home_odds']}<br>
+                        📊 <b>Edge:</b> {float(row['edge']):.2%}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                
         if bets.empty:
             st.warning("✅ Found bet_results.csv, but it's empty. Run `run_bot.py` and place some bets!")
         else:

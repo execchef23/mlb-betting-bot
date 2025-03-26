@@ -45,9 +45,9 @@ try:
     rl_model = PPO.load("data/rl_betting_agent.zip")
     action = rl_model.predict(env.reset())[0]
 except Exception as e:
-    print("⚠️ RL model failed to load. Using default policy.")
+    print(f"⚠️ RL model failed to load: {e}. Using default policy.")
     env = BettingEnv(df, pred_probs, bankroll=BANKROLL)
-    action = [1] * len(df)  # naive: bet on all with value
+    action = [1] * len(df)
 
 # Place bets
 placed_bets = []
