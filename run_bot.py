@@ -6,12 +6,12 @@ from stable_baselines3 import PPO
 from betting_env import BettingEnv
 from utils.send_telegram import send_telegram_message
 
-# Config
+# --- CONFIG ---
 DAYS_AHEAD = 1  # Predict for today + 1 day ahead
-VALUE_THRESHOLD = 0.05  # Minimum model edge to place bet
-BANKROLL = 1000  # Starting bankroll
+VALUE_THRESHOLD = 0.05
+BANKROLL = 1000
 
-# Load input features
+# --- LOAD FEATURES ---
 data_path = "data/live_game_features.csv"
 if not os.path.exists(data_path):
     print("⚠️ live_game_features.csv not found. Run enhance_features.py first.")
@@ -28,30 +28,29 @@ if df.empty:
 
 print(f"📦 Loaded {len(df)} games from live_game_features.csv")
 
-# Load XGBoost model
+# --- LOAD MODEL ---
 model = xgb.XGBClassifier()
 model.load_model("models/xgb_model_smart.json")
 
-# Predict home win probability
 model_input = df[[
     "home_team_code", "away_team_code", "home_win_pct", "away_win_pct",
     "home_momentum", "away_momentum", "home_avg_run_diff", "away_avg_run_diff", "run_diff"
 ]]
 pred_probs = model.predict_proba(model_input)[:, 1]  # Home win prob
 
-# 🔁 Save all predictions for trend tracking
-all_predictions = df.copy()
-all_predictions["predicted_home_win_prob"] = pred_probs
-all_predictions["timestamp"] = datetime.datetime.now().isoformat()
+# --- SAVE ALL PREDICTIONS ---
+os.makedirs("data", exist_ok=True)
+df_all = df.copy()
+df_all["predicted_home_win_prob"] = pred_probs
+df_all["timestamp"] = datetime.datetime.now().isoformat()
 
 history_path = "data/prediction_history.csv"
-os.makedirs("data", exist_ok=True)
 if os.path.exists(history_path):
-    all_predictions.to_csv(history_path, mode="a", header=False, index=False)
+    df_all.to_csv(history_path, mode="a", header=False, index=False)
 else:
-    all_predictions.to_csv(history_path, index=False)
+    df_all.to_csv(history_path, index=False)
 
-# Load RL agent or fall back
+# --- RL AGENT or fallback ---
 try:
     env = BettingEnv(df, pred_probs, bankroll=BANKROLL)
     rl_model = PPO.load("data/rl_betting_agent.zip")
@@ -61,8 +60,8 @@ except Exception:
     env = BettingEnv(df, pred_probs, bankroll=BANKROLL)
     action = [1] * len(df)
 
-# Place value bets
-placed_bets = []
+# --- PLACE VALUE BETS ---
+bets = []
 for i, row in df.iterrows():
     predicted_prob = pred_probs[i]
     implied_prob = 100 / abs(row["home_odds"]) if row["home_odds"] > 0 else abs(row["home_odds"]) / (abs(row["home_odds"]) + 100)
@@ -71,16 +70,16 @@ for i, row in df.iterrows():
     if edge > VALUE_THRESHOLD:
         bet = {
             "timestamp": datetime.datetime.now().isoformat(),
-            "game_date": row["game_date"],
+            "game_date": row["game_date"],  # ✅ Needed for result tracking
             "home_team": row["home_team"],
             "away_team": row["away_team"],
             "predicted_home_win_prob": round(predicted_prob, 4),
             "home_odds": row["home_odds"],
             "edge": round(edge, 4)
         }
-        placed_bets.append(bet)
+        bets.append(bet)
 
-        # Send Telegram alert
+        # --- TELEGRAM ALERT ---
         message = (
             f"📈 <b>Value Bet Found</b>\n"
             f"🏠 {row['home_team']} vs 🆚 {row['away_team']}\n"
@@ -90,10 +89,10 @@ for i, row in df.iterrows():
         )
         send_telegram_message(message)
 
-# Save placed bets
+# --- SAVE BETS ---
 results_path = "data/bet_results.csv"
-if placed_bets:
-    df_bets = pd.DataFrame(placed_bets)
+if bets:
+    df_bets = pd.DataFrame(bets)
     if os.path.exists(results_path):
         df_bets.to_csv(results_path, mode="a", header=False, index=False)
     else:
