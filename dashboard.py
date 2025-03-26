@@ -3,26 +3,25 @@ import pandas as pd
 import os
 
 st.set_page_config(page_title="MLB Betting AI Dashboard", layout="wide")
-st.title("⚾️ MLB Betting AI Dashboard")
+st.title("⚾ MLB Betting AI Dashboard")
 
-# === Bet History Section ===
+# Paths
 bet_path = "data/bet_results.csv"
+history_path = "data/prediction_history.csv"
+
+# 🔔 Value Bet Alerts
+st.markdown("## 🔔 Recent Value Bets (Last 24 Hours)")
+
 if os.path.exists(bet_path):
     try:
         bets = pd.read_csv(bet_path)
-        
-        st.markdown("### 🔔 Value Bet Alerts")
+        bets["timestamp"] = pd.to_datetime(bets["timestamp"])
+        recent = bets[bets["timestamp"] > pd.Timestamp.now() - pd.Timedelta(hours=24)]
 
-        # Only show recent bets from the last 24 hours
-        recent_bets = bets.copy()
-        recent_bets["timestamp"] = pd.to_datetime(recent_bets["timestamp"])
-        last_24h = pd.Timestamp.now() - pd.Timedelta(hours=24)
-        recent_bets = recent_bets[recent_bets["timestamp"] > last_24h]
-
-        if recent_bets.empty:
+        if recent.empty:
             st.info("📭 No value bets placed in the last 24 hours.")
         else:
-            for _, row in recent_bets.iterrows():
+            for _, row in recent.iterrows():
                 st.markdown(
                     f"""
                     <div style="border:1px solid #ddd;padding:10px;margin:10px 0;border-radius:5px;">
@@ -34,49 +33,27 @@ if os.path.exists(bet_path):
                     """,
                     unsafe_allow_html=True
                 )
-                
-        if bets.empty:
-            st.warning("✅ Found bet_results.csv, but it's empty. Run `run_bot.py` and place some bets!")
-        else:
-            st.subheader("📊 Bet History")
-            st.dataframe(bets.sort_values("timestamp", ascending=False), use_container_width=True)
-
-            st.subheader("📈 Bankroll Over Time")
-            bankroll_chart = bets[["timestamp", "bankroll"]].copy()
-            bankroll_chart["timestamp"] = pd.to_datetime(bankroll_chart["timestamp"])
-            st.line_chart(bankroll_chart.set_index("timestamp"))
-
-            st.subheader("🎯 Summary Stats")
-            wins = (bets["result"] == "WIN").sum()
-            losses = (bets["result"] == "LOSS").sum()
-            final_bankroll = bets["bankroll"].iloc[-1]
-            roi = ((final_bankroll - 1000) / 1000) * 100
-            st.markdown(f"**✅ Wins:** {wins}  \n❌ Losses: {losses}")
-            st.markdown(f"**💰 Final Bankroll:** ${final_bankroll:.2f}  \n📈 ROI: {roi:.2f}%")
-
-    except pd.errors.EmptyDataError:
-        st.warning("⚠️ bet_results.csv exists but is empty. Run `run_bot.py` to simulate some bets!")
-
+    except Exception as e:
+        st.error(f"Error loading bet history: {e}")
 else:
-    st.warning("⚠️ No bet history found. Run `run_bot.py` to create bet_results.csv.")
+    st.warning("⚠️ No bet history found. Run run_bot.py to create bet_results.csv.")
 
-# === Today's Games & Model Predictions ===
-features_path = "data/live_game_features.csv"
-if os.path.exists(features_path):
+# 🔮 Prediction History Section
+st.markdown("## 🔮 Model Prediction History")
+
+if os.path.exists(history_path):
     try:
-        games = pd.read_csv(features_path)
+        history = pd.read_csv(history_path)
+        history["timestamp"] = pd.to_datetime(history["timestamp"])
+        history = history.sort_values("timestamp", ascending=False).head(50)
 
-        st.subheader("📅 Today's Matchups & Model Predictions")
-        if "model_home_win_prob" in games.columns:
-            display_cols = [
-                "away_team", "home_team",
-                "model_home_win_prob", "home_avg_run_diff", "away_avg_run_diff"
-            ]
-            st.dataframe(games[display_cols], use_container_width=True)
-        else:
-            st.info("ℹ️ Run `run_bot.py` to generate model predictions for today's games.")
-
-    except pd.errors.EmptyDataError:
-        st.warning("⚠️ live_game_features.csv is empty. Run `enhance_features.py` after `scrape_odds.py`.")
+        st.dataframe(
+            history[[
+                "timestamp", "game_date", "home_team", "away_team", "predicted_home_win_prob"
+            ]].round(3),
+            use_container_width=True
+        )
+    except Exception as e:
+        st.error(f"Error loading prediction history: {e}")
 else:
-    st.warning("⚠️ live_game_features.csv not found. Run `scrape_odds.py` and `enhance_features.py`.")
+    st.warning("⚠️ prediction_history.csv not found. Run run_bot.py to generate predictions.")
