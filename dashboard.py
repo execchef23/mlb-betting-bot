@@ -131,7 +131,7 @@ if os.path.exists(bet_path):
     except Exception as e:
         st.error(f"Error reading bet results: {e}")
 
-# 🏆 Team Leaderboard by Confidence
+# 🏆 Team Leaderboard
 st.markdown("## 🏆 Team Leaderboard (Top Predicted Wins)")
 
 if os.path.exists(history_path):
@@ -153,7 +153,7 @@ if os.path.exists(history_path):
     except Exception as e:
         st.error(f"Error generating chart: {e}")
 
-# 🧠 Upcoming Games with Model Predictions
+# 🧠 Upcoming Games + Model Predictions
 st.markdown("## 🧠 Upcoming Games + Model Predictions")
 
 if os.path.exists(odds_path) and os.path.exists(history_path):
@@ -171,17 +171,41 @@ if os.path.exists(odds_path) and os.path.exists(history_path):
             how="left"
         )
 
-        merged = merged.sort_values("game_date")
-        merged["predicted_home_win_prob"] = merged["predicted_home_win_prob"].round(3)
-        merged.rename(columns={
-            "home_odds": "🏠 Home Odds",
-            "away_odds": "🆚 Away Odds",
-            "predicted_home_win_prob": "🤖 Home Win Prob"
-        }, inplace=True)
+        # Calculate edge and format for display
+        merged["implied_home_prob"] = merged["home_odds"].apply(
+            lambda odds: 100 / (odds + 100) if odds > 0 else abs(odds) / (abs(odds) + 100)
+        )
+        merged["edge"] = merged["predicted_home_win_prob"] - merged["implied_home_prob"]
+        merged["Edge %"] = (merged["edge"] * 100).round(2)
+        merged["🤖 Home Win Prob"] = merged["predicted_home_win_prob"].round(3)
 
-        st.dataframe(merged[[
-            "game_date", "home_team", "away_team", "🏠 Home Odds", "🆚 Away Odds", "🤖 Home Win Prob"
-        ]], use_container_width=True)
+        st.markdown("### 🎯 Filter: Only Show Value Bets?")
+        show_value_only = st.toggle("Show only bets with edge > 5%", value=False)
+
+        display_df = merged.copy()
+        if show_value_only:
+            display_df = display_df[display_df["edge"] > 0.05]
+
+        display_df = display_df[[
+            "game_date", "home_team", "away_team",
+            "home_odds", "away_odds", "🤖 Home Win Prob", "Edge %"
+        ]].rename(columns={
+            "home_odds": "🏠 Home Odds",
+            "away_odds": "🆚 Away Odds"
+        }).sort_values("game_date")
+
+        # Style high-confidence predictions
+        def highlight_confidence(val):
+            if isinstance(val, float) and val > 0.65:
+                return "background-color: #d2f8d2; font-weight: bold"
+            return ""
+
+        styled = display_df.style.applymap(highlight_confidence, subset=["🤖 Home Win Prob"])
+
+        st.dataframe(styled, use_container_width=True)
+
+        csv = display_df.to_csv(index=False).encode("utf-8")
+        st.download_button("📥 Download Table as CSV", data=csv, file_name="predicted_value_bets.csv", mime="text/csv")
 
     except Exception as e:
         st.error(f"Error combining odds and predictions: {e}")
