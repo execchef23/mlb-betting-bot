@@ -155,3 +155,21 @@ if os.path.exists(odds_path) and os.path.exists(history_path):
         st.error(f"Error combining odds and predictions: {e}")
 else:
     st.info("📊 Run scrape_odds.py and run_bot.py to see predictions with odds.")
+
+# 💰 Bankroll Over Time
+st.markdown("## 💰 Bankroll Over Time")
+
+if os.path.exists(bet_path):
+    try:
+        df = pd.read_csv(bet_path)
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        df = df[df["bankroll_after"].notnull()]
+        df = df.sort_values("timestamp")
+
+        if df.empty:
+            st.info("📭 No bankroll data yet. Run some bets first.")
+        else:
+            chart_data = df[["timestamp", "bankroll_after"]].set_index("timestamp")
+            st.line_chart(chart_data)
+    except Exception as e:
+        st.error(f"Error displaying bankroll chart: {e}")
