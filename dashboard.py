@@ -1,9 +1,30 @@
 import streamlit as st
 import pandas as pd
 import os
+import subprocess
 
 st.set_page_config(page_title="MLB Betting AI Dashboard", layout="wide")
 st.title("⚾ MLB Betting AI Dashboard")
+
+# 🚀 Run Prediction Section
+st.markdown("## 🚀 Run Predictions")
+
+days_ahead = st.selectbox("Select how many days ahead to predict:", list(range(0, 8)), index=1)
+
+if st.button("🧠 Run Bot for Selected Day"):
+    with st.spinner(f"Running prediction pipeline for {days_ahead} days ahead..."):
+        subprocess.run(["python", "scripts/scrape_odds.py", "--days-ahead", str(days_ahead)])
+        subprocess.run(["python", "scripts/enhance_features.py"])
+        subprocess.run(["python", "run_bot.py", "--days-ahead", str(days_ahead)])
+    st.success("✅ Done! Refresh the dashboard to see new results.")
+
+# 🔁 Track Win/Loss Results
+st.markdown("## 🎯 Update Win/Loss Results")
+
+if st.button("🔁 Track Results Now"):
+    with st.spinner("Updating bet results with final scores..."):
+        subprocess.run(["python", "scripts/track_results.py"])
+    st.success("✅ Win/loss results updated.")
 
 # --- File paths ---
 bet_path = "data/bet_results.csv"
