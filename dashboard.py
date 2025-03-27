@@ -2,21 +2,53 @@ import streamlit as st
 import pandas as pd
 import os
 import subprocess
+import requests
+from datetime import datetime, timedelta
 
 st.set_page_config(page_title="MLB Betting AI Dashboard", layout="wide")
 st.title("⚾ MLB Betting AI Dashboard")
 
+# 🧠 Auto-detect next MLB game day
+def get_next_game_day():
+    today = datetime.today().date()
+    for i in range(0, 7):
+        check_date = today + timedelta(days=i)
+        url = f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={check_date}"
+        try:
+            games = requests.get(url).json().get("dates", [])
+            if games and games[0].get("games"):
+                return check_date
+        except Exception:
+            pass
+    return None
+
 # 🚀 Run Prediction Section
 st.markdown("## 🚀 Run Predictions")
 
-days_ahead = st.selectbox("Select how many days ahead to predict:", list(range(0, 8)), index=1)
+next_game_day = get_next_game_day()
+today = datetime.today().date()
+default_days_ahead = (next_game_day - today).days if next_game_day else 1
 
-if st.button("🧠 Run Bot for Selected Day"):
-    with st.spinner(f"Running prediction pipeline for {days_ahead} days ahead..."):
-        subprocess.run(["python", "scripts/scrape_odds.py", "--days-ahead", str(days_ahead)])
-        subprocess.run(["python", "scripts/enhance_features.py"])
-        subprocess.run(["python", "run_bot.py", "--days-ahead", str(days_ahead)])
-    st.success("✅ Done! Refresh the dashboard to see new results.")
+st.write(f"🧠 Auto-detected next game day: **{next_game_day.strftime('%A, %B %d')}**")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    if st.button(f"🎯 Run Bot for {next_game_day.strftime('%b %d')}"):
+        with st.spinner("Running bot for next available game day..."):
+            subprocess.run(["python", "scripts/scrape_odds.py", "--days-ahead", str(default_days_ahead)])
+            subprocess.run(["python", "scripts/enhance_features.py"])
+            subprocess.run(["python", "run_bot.py", "--days-ahead", str(default_days_ahead)])
+        st.success("✅ Done! Refresh to view results.")
+
+with col2:
+    manual_days = st.selectbox("📅 Or select manually:", list(range(0, 8)), index=default_days_ahead)
+    if st.button(f"📊 Run Bot for +{manual_days} days"):
+        with st.spinner(f"Running bot for {manual_days} days ahead..."):
+            subprocess.run(["python", "scripts/scrape_odds.py", "--days-ahead", str(manual_days)])
+            subprocess.run(["python", "scripts/enhance_features.py"])
+            subprocess.run(["python", "run_bot.py", "--days-ahead", str(manual_days)])
+        st.success("✅ Done! Refresh to view results.")
 
 # 🔁 Track Win/Loss Results
 st.markdown("## 🎯 Update Win/Loss Results")
