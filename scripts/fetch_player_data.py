@@ -1,59 +1,58 @@
-from pybaseball import (
-    statcast_batter,
-    statcast_pitcher,
-    batting_stats,
-    pitching_stats,
-)
-import pandas as pd
-from datetime import date
 import os
-import time
+import pandas as pd
+from pybaseball import statcast_batter, statcast_pitcher, batting_stats, pitching_stats
+from datetime import datetime
 
-def sanitize(name):
-    return name.replace(" ", "_").replace(".", "").replace("'", "")
+# Set the season years
+YEARS = [2024, 2025]
+START_DATE = "03-01"
+END_DATE = "10-31"
 
-def fetch_players(year, save_dir, top_n=100):
-    os.makedirs(save_dir, exist_ok=True)
-    print(f"\n📆 Fetching top {top_n} players for {year}...")
+BATTER_PATH = "data/player_stats_{year}"
+PITCHER_PATH = "data/player_stats_{year}"
 
-    # Get top hitters and pitchers
-    try:
-        batters = batting_stats(year).sort_values("H", ascending=False).head(top_n)
-        pitchers = pitching_stats(year).sort_values("SO", ascending=False).head(top_n)
-    except Exception as e:
-        print(f"❌ Failed to fetch stats for {year}: {e}")
-        return
+os.makedirs("logs", exist_ok=True)
 
-    # Date range
-    start_date = f"{year}-03-28"
-    end_date = date.today().strftime("%Y-%m-%d") if year == date.today().year else f"{year}-10-01"
+def fetch_statcast_data():
+    for year in YEARS:
+        print(f"📦 Fetching data for year: {year}")
+        batter_ids = batting_stats(year)["IDfg"].dropna().unique().tolist()
+        pitcher_ids = pitching_stats(year)["IDfg"].dropna().unique().tolist()
 
-    # Fetch batter statcast data
-    for _, row in batters.iterrows():
-        name = row["Name"]
-        player_id = row["IDfg"]
-        try:
-            print(f"📥 Batter ({year}): {name}")
-            df = statcast_batter(start_date, end_date, player_id)
-            df.to_csv(f"{save_dir}/batter_{sanitize(name)}.csv", index=False)
-            time.sleep(1)
-        except Exception as e:
-            print(f"⚠️ Skipping batter {name}: {e}")
+        # Prep output folders
+        batter_path = BATTER_PATH.format(year=year)
+        pitcher_path = PITCHER_PATH.format(year=year)
+        os.makedirs(batter_path, exist_ok=True)
+        os.makedirs(pitcher_path, exist_ok=True)
 
-    # Fetch pitcher statcast data
-    for _, row in pitchers.iterrows():
-        name = row["Name"]
-        player_id = row["IDfg"]
-        try:
-            print(f"📥 Pitcher ({year}): {name}")
-            df = statcast_pitcher(start_date, end_date, player_id)
-            df.to_csv(f"{save_dir}/pitcher_{sanitize(name)}.csv", index=False)
-            time.sleep(1)
-        except Exception as e:
-            print(f"⚠️ Skipping pitcher {name}: {e}")
+        start = f"{year}-{START_DATE}"
+        end = f"{year}-{END_DATE}"
 
-    print(f"✅ Completed fetching for {year}.")
+        print(f"🧢 Batters ({len(batter_ids)}):")
+        for player_id in batter_ids:
+            try:
+                df = statcast_batter(start, end, player_id)
+                if df.shape[0] > 0:
+                    name = df["player_name"].iloc[0].replace(" ", "_")
+                    df.to_csv(f"{batter_path}/batter_{name}.csv", index=False)
+                    print(f"✅ Saved: {name}")
+                else:
+                    print(f"⚠️ Skipped {player_id}: no rows")
+            except Exception as e:
+                print(f"❌ Failed batter {player_id}: {e}")
+
+        print(f"🎯 Pitchers ({len(pitcher_ids)}):")
+        for player_id in pitcher_ids:
+            try:
+                df = statcast_pitcher(start, end, player_id)
+                if df.shape[0] > 0:
+                    name = df["player_name"].iloc[0].replace(" ", "_")
+                    df.to_csv(f"{pitcher_path}/pitcher_{name}.csv", index=False)
+                    print(f"✅ Saved: {name}")
+                else:
+                    print(f"⚠️ Skipped {player_id}: no rows")
+            except Exception as e:
+                print(f"❌ Failed pitcher {player_id}: {e}")
 
 if __name__ == "__main__":
-    fetch_players(2024, "data/player_stats_2024")
-    fetch_players(2025, "data/player_stats_2025")
+    fetch_statcast_data()

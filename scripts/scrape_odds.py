@@ -1,61 +1,75 @@
 import requests
 import pandas as pd
+import datetime
+import argparse
 import os
 
-API_KEY = "b666b3390e3028180cc3b53ab0fa1934"  # Replace with your real key
+# --- CLI args ---
+parser = argparse.ArgumentParser()
+parser.add_argument("--days-ahead", type=int, default=1)
+parser.add_argument("--date", type=str, help="Specific prediction date (YYYY-MM-DD)")
+args = parser.parse_args()
 
-def get_odds():
-    url = "https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/"
-    params = {
-        "apiKey": API_KEY,
-        "regions": "us",
-        "markets": "h2h",
-        "oddsFormat": "american"
-    }
+# --- Determine target date ---
+if args.date:
+    target_date = pd.to_datetime(args.date).date()
+else:
+    target_date = datetime.date.today() + datetime.timedelta(days=args.days_ahead)
 
-    resp = requests.get(url, params=params)
-    if resp.status_code != 200:
-        print("⚠️ API error:", resp.status_code, resp.text)
-        return []
+DATE_STR = target_date.strftime("%Y-%m-%d")
 
-    games = resp.json()
-    all_data = []
+# --- API Config ---
+API_KEY = "b666b3390e3028180cc3b53ab0fa1934"
+url = f"https://api.the-odds-api.com/v4/sports/baseball_mlb/odds?regions=us&markets=h2h&dateFormat=iso&date={DATE_STR}&apiKey={API_KEY}"
 
-    for game in games:
-        try:
-            home = game["home_team"]
-            away = game["away_team"]
-            game_date = game["commence_time"][:10]
+print(f"📡 Requesting odds for {DATE_STR}...")
 
-            bookmaker = game["bookmakers"][0]
-            outcomes = bookmaker["markets"][0]["outcomes"]
+# --- Request API ---
+resp = requests.get(url)
 
-            home_odds = next(o["price"] for o in outcomes if o["name"] == home)
-            away_odds = next(o["price"] for o in outcomes if o["name"] == away)
+if resp.status_code != 200:
+    print(f"❌ API error: {resp.status_code} - {resp.text}")
+    exit()
 
-            all_data.append({
+games = resp.json()
+if not games:
+    print("📭 No games returned from API.")
+    exit()
+
+# --- Parse results ---
+rows = []
+for game in games:
+    try:
+        home_team = game["home_team"]
+        away_team = game["away_team"]
+        game_date = pd.to_datetime(game["commence_time"]).date()
+
+        # Grab the first bookmaker's odds
+        bookmaker = game["bookmakers"][0]
+        outcomes = bookmaker["markets"][0]["outcomes"]
+
+        home_odds = None
+        away_odds = None
+        for o in outcomes:
+            if o["name"] == home_team:
+                home_odds = o["price"]
+            elif o["name"] == away_team:
+                away_odds = o["price"]
+
+        if home_odds is not None and away_odds is not None:
+            rows.append({
                 "game_date": game_date,
-                "home_team": home,
-                "away_team": away,
+                "home_team": home_team,
+                "away_team": away_team,
                 "home_odds": home_odds,
                 "away_odds": away_odds
             })
-        except:  # noqa: E722
-            continue
+    except Exception as e:
+        print(f"⚠️ Error parsing game: {e}")
 
-    return all_data
+# --- Save to CSV ---
+df = pd.DataFrame(rows)
+os.makedirs("data", exist_ok=True)
+df.to_csv("data/raw_odds.csv", index=False)
 
-def main():
-    print("📡 Fetching real odds from OddsAPI...")
-    games = get_odds()
-    if not games:
-        print("❌ No games fetched.")
-        return
-
-    os.makedirs("data", exist_ok=True)
-    df = pd.DataFrame(games)
-    df.to_csv("data/raw_odds.csv", index=False)
-    print(f"✅ Saved {len(df)} games to data/raw_odds.csv")
-
-if __name__ == "__main__":
-    main()
+print(f"✅ Saved {len(df)} games to data/raw_odds.csv")

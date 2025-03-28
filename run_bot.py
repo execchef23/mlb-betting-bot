@@ -1,102 +1,68 @@
 import pandas as pd
-import xgboost as xgb
+import numpy as np
 import datetime
-import os
+import xgboost as xgb
 from stable_baselines3 import PPO
 from betting_env import BettingEnv
-from utils.send_telegram import send_telegram_message
+import joblib
+import os
 
-# --- CONFIG ---
-DAYS_AHEAD = 1  # Predict for today + 1 day ahead
-VALUE_THRESHOLD = 0.05
-BANKROLL = 1000
-
-# --- LOAD FEATURES ---
-data_path = "data/live_game_features.csv"
-if not os.path.exists(data_path):
-    print("⚠️ live_game_features.csv not found. Run enhance_features.py first.")
-    exit()
-
-df = pd.read_csv(data_path)
-df["game_date"] = pd.to_datetime(df["game_date"])
-today = datetime.date.today()
-df = df[df["game_date"].dt.date <= today + datetime.timedelta(days=DAYS_AHEAD)]
-
-if df.empty:
-    print("📭 No games to predict.")
-    exit()
-
-print(f"📦 Loaded {len(df)} games from live_game_features.csv")
-
-# --- LOAD MODEL ---
+# Load model
 model = xgb.XGBClassifier()
 model.load_model("models/xgb_model_smart.json")
 
-model_input = df[[
-    "home_team_code", "away_team_code", "home_win_pct", "away_win_pct",
-    "home_momentum", "away_momentum", "home_avg_run_diff", "away_avg_run_diff", "run_diff"
-]]
-pred_probs = model.predict_proba(model_input)[:, 1]  # Home win prob
+# Load features
+df = pd.read_csv("data/live_game_features.csv")
 
-# --- SAVE ALL PREDICTIONS ---
-os.makedirs("data", exist_ok=True)
-df_all = df.copy()
-df_all["predicted_home_win_prob"] = pred_probs
-df_all["timestamp"] = datetime.datetime.now().isoformat()
+# Predict
+model_input = df[["home_team_code", "away_team_code", "home_win_pct", "away_win_pct",
+                  "home_momentum", "away_momentum", "home_avg_run_diff", "away_avg_run_diff"]]
+pred_probs = model.predict_proba(model_input)[:, 1]  # Home win
 
-history_path = "data/prediction_history.csv"
-if os.path.exists(history_path):
-    df_all.to_csv(history_path, mode="a", header=False, index=False)
-else:
-    df_all.to_csv(history_path, index=False)
+df["predicted_home_win_prob"] = pred_probs
 
-# --- RL AGENT or fallback ---
-try:
-    env = BettingEnv(df, pred_probs, bankroll=BANKROLL)
-    rl_model = PPO.load("data/rl_betting_agent.zip")
-    action = rl_model.predict(env.reset())[0]
-except Exception:
-    print("⚠️ RL model failed to load. Using default policy.")
-    env = BettingEnv(df, pred_probs, bankroll=BANKROLL)
-    action = [1] * len(df)
+# Implied probability from moneyline odds
+def implied_prob(odds):
+    return 100 / (odds + 100) if odds > 0 else abs(odds) / (abs(odds) + 100)
 
-# --- PLACE VALUE BETS ---
-bets = []
-for i, row in df.iterrows():
-    predicted_prob = pred_probs[i]
-    implied_prob = 100 / abs(row["home_odds"]) if row["home_odds"] > 0 else abs(row["home_odds"]) / (abs(row["home_odds"]) + 100)
-    edge = predicted_prob - implied_prob
+df["implied_home_prob"] = df["home_odds"].apply(implied_prob)
+df["edge"] = df["predicted_home_win_prob"] - df["implied_home_prob"]
 
-    if edge > VALUE_THRESHOLD:
+# --- BANKROLL TRACKING ---
+bankroll = 1000  # starting bankroll
+bet_size = 50    # fixed bet per game
+
+value_bets = []
+for _, row in df.iterrows():
+    edge = row["edge"]
+    if edge > 0.05:  # Only log bets with positive value
+        bankroll -= bet_size
         bet = {
             "timestamp": datetime.datetime.now().isoformat(),
-            "game_date": row["game_date"],  # ✅ Needed for result tracking
+            "game_date": row["game_date"],
             "home_team": row["home_team"],
             "away_team": row["away_team"],
-            "predicted_home_win_prob": round(predicted_prob, 4),
+            "predicted_home_win_prob": round(row["predicted_home_win_prob"], 4),
             "home_odds": row["home_odds"],
-            "edge": round(edge, 4)
+            "edge": round(edge, 4),
+            "bet_size": bet_size,
+            "bankroll_after": round(bankroll, 2)
         }
-        bets.append(bet)
+        value_bets.append(bet)
 
-        # --- TELEGRAM ALERT ---
-        message = (
-            f"📈 <b>Value Bet Found</b>\n"
-            f"🏠 {row['home_team']} vs 🆚 {row['away_team']}\n"
-            f"📅 Game Date: {row['game_date']}\n"
-            f"💰 Odds: {row['home_odds']}\n"
-            f"📊 Edge: {edge:.2%}"
-        )
-        send_telegram_message(message)
+# Save bets
+os.makedirs("data", exist_ok=True)
+bet_results_path = "data/bet_results.csv"
 
-# --- SAVE BETS ---
-results_path = "data/bet_results.csv"
-if bets:
-    df_bets = pd.DataFrame(bets)
-    if os.path.exists(results_path):
-        df_bets.to_csv(results_path, mode="a", header=False, index=False)
-    else:
-        df_bets.to_csv(results_path, index=False)
-    print(f"✅ {len(df_bets)} value bets placed and saved to bet_results.csv")
+if os.path.exists(bet_results_path):
+    existing = pd.read_csv(bet_results_path)
+    updated = pd.concat([existing, pd.DataFrame(value_bets)], ignore_index=True)
 else:
-    print("📉 No value bets found today.")
+    updated = pd.DataFrame(value_bets)
+
+updated.to_csv(bet_results_path, index=False)
+
+if value_bets:
+    print(f"📈 Value Bets Found: {len(value_bets)}")
+else:
+    print("📭 No value bets found today.")
