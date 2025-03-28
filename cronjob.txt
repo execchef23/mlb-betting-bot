@@ -1,18 +1,18 @@
 # Run odds scraping and feature generation
-30 9 * * * /bin/bash -c 'cd /Users/michaelmanley/Documents/Code/mlb-betting-bot && ./venv/bin/python scripts/scrape_odds.py >> logs/odds.log 2>&1'
-32 9 * * * /bin/bash -c 'cd /Users/michaelmanley/Documents/Code/mlb-betting-bot && ./venv/bin/python scripts/enhance_features.py >> logs/features.log 2>&1'
+45 9 * * * /bin/bash -c 'cd /Users/michaelmanley/Documents/Code/mlb-betting-bot && ./venv/bin/python scripts/scrape_odds.py >> logs/odds.log 2>&1'
+47 9 * * * /bin/bash -c 'cd /Users/michaelmanley/Documents/Code/mlb-betting-bot && ./venv/bin/python scripts/enhance_features.py >> logs/features.log 2>&1'
 
 # Run main prediction bot
-34 9 * * * /bin/bash -c 'cd /Users/michaelmanley/Documents/Code/mlb-betting-bot && ./venv/bin/python run_bot.py >> logs/bot.log 2>&1'
+49 9 * * * /bin/bash -c 'cd /Users/michaelmanley/Documents/Code/mlb-betting-bot && ./venv/bin/python run_bot.py >> logs/bot.log 2>&1'
 
 # Track game results from previous day
-36 9 * * * /bin/bash -c 'cd /Users/michaelmanley/Documents/Code/mlb-betting-bot && ./venv/bin/python scripts/track_results.py >> logs/results.log 2>&1'
+51 9 * * * /bin/bash -c 'cd /Users/michaelmanley/Documents/Code/mlb-betting-bot && ./venv/bin/python scripts/track_results.py >> logs/results.log 2>&1'
 
 # Generate player prop predictions (hits + strikeouts)
-38 9 * * * /bin/bash -c 'cd /Users/michaelmanley/Documents/Code/mlb-betting-bot && ./venv/bin/python scripts/predict_player_props.py >> logs/props.log 2>&1'
+53 9 * * * /bin/bash -c 'cd /Users/michaelmanley/Documents/Code/mlb-betting-bot && ./venv/bin/python scripts/predict_player_props.py >> logs/props.log 2>&1'
 
 # Fetch fresh player Statcast data
-40 9 * * * /bin/bash -c 'cd /Users/michaelmanley/Documents/Code/mlb-betting-bot && ./venv/bin/python scripts/fetch_player_data.py >> logs/fetch_player_data.log 2>&1'
+55 9 * * * /bin/bash -c 'cd /Users/michaelmanley/Documents/Code/mlb-betting-bot && ./venv/bin/python scripts/fetch_player_data.py >> logs/fetch_player_data.log 2>&1'
 
 # Engineer features from fresh player data
-42 9 * * * /bin/bash -c 'cd /Users/michaelmanley/Documents/Code/mlb-betting-bot && ./venv/bin/python scripts/engineer_player_features.py >> logs/player_features.log 2>&1'
+57 9 * * * /bin/bash -c 'cd /Users/michaelmanley/Documents/Code/mlb-betting-bot && ./venv/bin/python scripts/engineer_player_features.py >> logs/player_features.log 2>&1'
