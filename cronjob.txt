@@ -16,3 +16,5 @@
 
 # Engineer features from fresh player data
 12 6 * * * /bin/bash -c 'cd /Users/michaelmanley/Documents/Code/mlb-betting-bot && ./venv/bin/python scripts/features/engineer_player_features.py >> logs/player_features.log 2>&1'
+
+14 6 * * * /bin/bash -c 'cd /Users/michaelmanley/Documents/Code/mlb-betting-bot && ./venv/bin/python scripts/utils/check_todays_games.py >> logs/schedule.log 2>&1'
