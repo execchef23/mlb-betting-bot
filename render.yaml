@@ -1,7 +1,16 @@
 services:
   - type: web
     name: mlb-betting-dashboard
-    env: docker
-    plan: free
-    autoDeploy: true
-    region: oregon
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run dashboard.py --server.port $PORT
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: '1'
+
+  - type: cron
+    name: mlb-daily-run
+    schedule: "0 6 * * *"
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python scripts/run/daily_run.py
