@@ -3,13 +3,17 @@ import numpy as np
 import datetime
 import xgboost as xgb
 from stable_baselines3 import PPO
-from betting_env import BettingEnv
 import joblib
 import os
+import sys
+
+# Add root to PYTHONPATH so we can import betting_env.py
+sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/../..")
+from betting_env import BettingEnv
 
 # Load model
 model = xgb.XGBClassifier()
-model.load_model("models/xgb_model_smart.json")
+model.load_model("models/game_outcome_model.pkl")
 
 # Load features
 df = pd.read_csv("data/live_game_features.csv")

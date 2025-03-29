@@ -166,7 +166,7 @@ def run_script(script_path):
 if run_pipeline:
     if st.button("🚀 Run Pipeline Now"):
         with st.spinner("Running scripts..."):
-            run_script("scripts/utils/scrape_odds.py")
+            run_script("scripts/scrape_odds.py")
             run_script("scripts/features/enhance_features.py")
             run_script("scripts/run/run_bot.py")
             run_script("scripts/evaluation/track_results.py")

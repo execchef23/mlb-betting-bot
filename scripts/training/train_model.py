@@ -29,5 +29,5 @@ accuracy = accuracy_score(y_test, y_pred)
 print(f"✅ Model accuracy: {accuracy:.2%}")
 
 # Save the model
-model.save_model("data/xgb_model.json")
-print("✅ Model saved to data/xgb_model.json")
+model.save_model("models/game_outcome_model.pkl")
+print("✅ Model saved to models/game_outcome_model.pkl")
