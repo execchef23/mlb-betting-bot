@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 from datetime import datetime
+import subprocess
 
 st.set_page_config(page_title="⚾️ MLB Betting AI Dashboard", layout="wide")
 
@@ -99,11 +100,10 @@ except:
 st.subheader("🧠 Upcoming Games + Model Predictions")
 try:
     from scripts.prediction.predict_with_features import load_upcoming_predictions
-
     upcoming_df = load_upcoming_predictions()
     st.dataframe(upcoming_df.sort_values("model_pred", ascending=False), use_container_width=True)
 except:
-    st.markdown("📊 Run scrape_odds.py and run_bot.py to see predictions with odds.")
+    st.markdown("📊 Run the pipeline to see predictions with odds.")
 
 # =======================
 # 🎯 Player Prop Predictions
@@ -118,7 +118,7 @@ try:
     st.dataframe(props_df[props_df["prop_type"] == "strikeouts"].sort_values("prediction", ascending=False), use_container_width=True)
 except:
     st.warning("⚠️ player_prop_predictions.csv not found. Run predict_player_props.py.")
-    
+
 # =======================
 # 🔍 Player Search
 # =======================
@@ -126,7 +126,6 @@ st.subheader("🔍 Search Player Prop Prediction")
 
 try:
     props_df = pd.read_csv(player_props_path)
-
     player_name_input = st.text_input("Enter Player Name (e.g. Mookie Betts):", "")
     search_date = datetime.today().strftime("%Y-%m-%d")  # default to today
 
@@ -142,3 +141,35 @@ try:
             st.warning(f"No predictions found for {player_name_input} on {search_date}.")
 except:
     st.warning("⚠️ player_prop_predictions.csv not found. Run predict_player_props.py.")
+
+# =======================
+# ▶️ Run Full Daily Pipeline
+# =======================
+st.subheader("▶️ Run Full Daily Pipeline")
+
+run_pipeline = st.checkbox("✅ I confirm I want to run the full prediction pipeline")
+
+def run_script(script_path):
+    try:
+        result = subprocess.run(
+            ["python", script_path],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        st.success(f"✅ Ran {script_path}")
+        st.text(result.stdout)
+    except subprocess.CalledProcessError as e:
+        st.error(f"❌ Error running {script_path}")
+        st.text(e.stderr)
+
+if run_pipeline:
+    if st.button("🚀 Run Pipeline Now"):
+        with st.spinner("Running scripts..."):
+            run_script("scripts/prediction/scrape_odds.py")
+            run_script("scripts/features/enhance_features.py")
+            run_script("scripts/run/run_bot.py")
+            run_script("scripts/evaluation/track_results.py")
+            run_script("scripts/data/fetch_player_data.py")
+            run_script("scripts/features/engineer_player_features.py")
+            run_script("scripts/prediction/predict_player_props.py")
